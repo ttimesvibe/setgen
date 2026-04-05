@@ -17,15 +17,13 @@ const C = {
 const LABELS = {
   thumbnail: "썸네일/리스트 제목",
   youtube_title: "유튜브 제목",
-  article_title: "기사 제목",
-  portal_title: "네이버/다음 제목",
   description: "유튜브 설명/기사/페북",
 };
 const ICONS = {
-  thumbnail: "🖼️", youtube_title: "▶️", article_title: "📰",
-  portal_title: "🔍", description: "📝",
+  thumbnail: "🖼️", youtube_title: "▶️",
+  description: "📝",
 };
-const FIELD_ORDER = ["thumbnail", "youtube_title", "article_title", "portal_title", "description"];
+const FIELD_ORDER = ["thumbnail", "youtube_title", "description"];
 
 export default function App() {
   const [fn, setFn] = useState("");
