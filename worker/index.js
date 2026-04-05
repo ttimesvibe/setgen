@@ -1,62 +1,132 @@
-// Cloudflare Worker — Set Generator
-// Endpoints: POST /generate-set
+// Cloudflare Worker — Set Generator v3
+// Phase 1: YouTube/Google Autocomplete + 3-character candidates + tags
 
-const SYSTEM_PROMPT = `당신은 유튜브 인터뷰 채널 'ttimes'의 편집자입니다.
-인터뷰 원고를 읽고 아래 형식의 "세트"를 생성합니다. 각 항목별로 2~3개 후보를 만들어주세요.
+const KEYWORD_SYSTEM = `인터뷰 원고에서 유튜브 검색에 활용할 핵심 키워드를 추출합니다.
+JSON만 출력하세요. 다른 텍스트 없이.
+{"keywords": ["키워드1", "키워드2", ...], "guest_summary": "게스트 한줄 소개"}
+규칙:
+- 6~10개 키워드
+- 고유명사(인물, 기업, 서비스명) 우선
+- 원고에서 반복 등장하거나 핵심 논점인 단어
+- 너무 일반적인 단어(AI, 기술, 시장) 단독 사용 금지 — "AI 커머스", "AI 거품론"처럼 구체화`;
 
-## 출력 형식 (JSON)
+const SET_SYSTEM = `당신은 유튜브 인터뷰 채널 'ttimes'의 편집자입니다.
+인터뷰 원고와 실시간 트렌드 데이터를 기반으로 "세트"를 생성합니다.
+
+## 출력 형식 (반드시 이 JSON 구조를 따르세요)
 {
-  "thumbnail": [
-    {"lines": ["첫줄", "둘째줄", "셋째줄(선택)"]},
-    {"lines": ["첫줄", "둘째줄", "셋째줄(선택)"]}
+  "tags": [
+    {"tag": "키워드", "source": "trend 또는 script 또는 both", "reason": "근거 설명"}
   ],
-  "youtube_title": ["후보1", "후보2", "후보3"],
-  "description": ["후보1", "후보2"]
+  "thumbnail": [
+    {"type": "balanced", "lines": ["줄1", "줄2", "줄3(선택)"], "reason": "이 조합을 선택한 이유"},
+    {"type": "script", "lines": ["줄1", "줄2", "줄3(선택)"], "reason": "이 조합을 선택한 이유"},
+    {"type": "trend", "lines": ["줄1", "줄2", "줄3(선택)"], "reason": "이 조합을 선택한 이유"}
+  ],
+  "youtube_title": [
+    {"type": "balanced", "text": "제목", "reason": "근거"},
+    {"type": "script", "text": "제목", "reason": "근거"},
+    {"type": "trend", "text": "제목", "reason": "근거"}
+  ],
+  "description": [
+    {"type": "balanced", "text": "설명문", "reason": "근거"},
+    {"type": "script", "text": "설명문", "reason": "근거"},
+    {"type": "trend", "text": "설명문", "reason": "근거"}
+  ]
 }
 
-## 각 항목 규칙
+## 3가지 후보 성격 (반드시 3개 모두 생성)
+- balanced: 스크립트 내용 50% + 트렌드 키워드 50% 균형
+- script: 원고의 핵심 발언과 분석에 충실. 게스트만의 독특한 시각 강조. 트렌드 의존 최소화
+- trend: 트렌드 자동완성 키워드를 제목에 직접 사용. 검색/추천 노출 극대화
 
-### 썸네일/리스트 제목 (thumbnail)
+## 태그 규칙
+- 10~15개
+- source: "trend"=트렌드 데이터에서 추출, "script"=원고 내용에서 추출, "both"=양쪽 모두
+- reason: 왜 이 태그를 추천하는지 한 문장 (예: "YouTube 자동완성 3번째 노출 + 원고 후반부 핵심 주제")
+
+## 썸네일 규칙
 - 2~3줄, 각 줄 15자 내외
-- 첫 줄: 게스트 정체성이나 주제의 훅 (예: "30년 개발자의 기업분석", "(커머스) (SNS) (성인 모드)")
-- 둘째 줄: 충격/호기심 유발 (예: "빅테크가 왜 사람 자르냐구요?", "'AI = 챗GPT' 시절은 갔다")
-- 셋째 줄(선택): 구체적 사례 (예: "아마존은 어떻게 일하는지 아세요?", "오픈AI 줄줄이 서비스 접는 이유")
+- 구체적 숫자, 고유명사 활용
+- "충격", "경악", "소름" 같은 자극적 감탄사 금지
 
-### 유튜브 제목 (youtube_title)
+## 유튜브 제목 규칙
 - 1줄, 40~60자
-- 핵심 주제 + (게스트명 직함) 형식
-- 예: "1년간 현장에서 겪어본 '토큰 이코노미'의 현실 (30년 개발자 박종천)"
+- 앞 30자 안에 핵심 검색 키워드 배치
+- (게스트명 직함) 형식으로 끝남
 
-### 유튜브 설명/기사/페북 (description)
-- 3~5문장 요약문
-- 첫 문장: 트렌드/이슈 제시
-- 중간: 핵심 인사이트 2~3개, 구체적 내용 포함
-- 마지막: 게스트 소개 + 시청/구독 유도
-- 예: "클로드 코드와 '오퍼스 4.6' 등장 이후 에이전틱 AI의 성능이 임계점을 넘었다는 분석이 많습니다..."
+## 설명문 규칙
+- 3~5문장
+- 원고에 없는 내용 절대 지어내지 말 것
 
-## 중요 원칙
-- 원고의 핵심 주제와 게스트의 독특한 시각을 반영
-- 과장하지 않되, 클릭을 유도할 수 있는 자연스러운 표현
-- 게스트의 발언 중 인상적인 표현을 활용
-- JSON만 출력하고 다른 텍스트는 포함하지 마세요`;
+## 중요
+- 트렌드 데이터에서 "자동완성 순서"가 곧 검색량 순위. 1번이 가장 많이 검색됨
+- reason에 "YouTube 자동완성 N번째", "Google 자동완성 N번째" 등 구체적 근거 기재
+- JSON만 출력. 다른 텍스트 없이`;
 
-function compressScript(text, maxChars = 12000) {
+async function getYTSuggestions(keyword) {
+  try {
+    const url = "https://clients1.google.com/complete/search?client=youtube&hl=ko&gl=kr&ds=yt&q=" + encodeURIComponent(keyword);
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const text = await res.text();
+    const start = text.indexOf("[");
+    const end = text.lastIndexOf("]") + 1;
+    if (start === -1) return [];
+    const data = JSON.parse(text.substring(start, end));
+    return (data[1] || []).map(item => item[0]);
+  } catch (e) {
+    console.warn("YT suggest failed for " + keyword + ": " + e.message);
+    return [];
+  }
+}
+
+async function getGoogleSuggestions(keyword) {
+  try {
+    const url = "https://suggestqueries.google.com/complete/search?client=firefox&hl=ko&gl=kr&q=" + encodeURIComponent(keyword);
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const data = await res.json();
+    return data[1] || [];
+  } catch (e) {
+    console.warn("Google suggest failed for " + keyword + ": " + e.message);
+    return [];
+  }
+}
+
+function compressScript(text, maxChars) {
   if (text.length <= maxChars) return text;
   const headSize = Math.floor(maxChars * 0.4);
   const tailSize = Math.floor(maxChars * 0.4);
   const midSize = maxChars - headSize - tailSize - 100;
   const midStart = Math.floor(text.length * 0.4);
-  return text.substring(0, headSize) +
-    "\n\n[... 중략 ...]\n\n" +
-    text.substring(midStart, midStart + midSize) +
-    "\n\n[... 중략 ...]\n\n" +
-    text.substring(text.length - tailSize);
+  return text.substring(0, headSize) + "\n\n[... 중략 ...]\n\n" + text.substring(midStart, midStart + midSize) + "\n\n[... 중략 ...]\n\n" + text.substring(text.length - tailSize);
+}
+
+async function callGPT(systemPrompt, userPrompt, apiKey, maxTokens, temperature) {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4.1",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  var content = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+  var jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("AI JSON parse failed: " + content.substring(0, 300));
+  return JSON.parse(jsonMatch[0]);
 }
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    const cors = {
+    var url = new URL(request.url);
+    var cors = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
@@ -65,43 +135,61 @@ export default {
 
     if (url.pathname === "/generate-set" && request.method === "POST") {
       try {
-        const { script, guest_name, guest_title } = await request.json();
+        var body = await request.json();
+        var script = body.script;
+        var guest_name = body.guest_name;
+        var guest_title = body.guest_title;
         if (!script) return Response.json({ success: false, error: "script required" }, { headers: cors });
 
-        const compressed = compressScript(script);
-        const userPrompt = `## 게스트 정보
-- 이름: ${guest_name || "(원고에서 추출해주세요)"}
-- 직함/소속: ${guest_title || "(원고에서 추출해주세요)"}
-
-## 인터뷰 원고
-${compressed}`;
-
-        const apiKey = env.OPENAI_API_KEY;
+        var apiKey = env.OPENAI_API_KEY;
         if (!apiKey) return Response.json({ success: false, error: "OPENAI_API_KEY not configured" }, { headers: cors, status: 500 });
 
-        const res = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "gpt-4.1",
-            messages: [
-              { role: "system", content: SYSTEM_PROMPT },
-              { role: "user", content: userPrompt },
-            ],
-            temperature: 0.8,
-            max_tokens: 2000,
-          }),
+        var compressed = compressScript(script, 10000);
+
+        // Step 1: 키워드 추출
+        var kwResult = await callGPT(KEYWORD_SYSTEM, compressed, apiKey, 500, 0.3);
+        var keywords = kwResult.keywords || [];
+        var guestSummary = kwResult.guest_summary || "";
+
+        // Step 2: Autocomplete 병렬 호출
+        var trendData = {};
+        var kwSlice = keywords.slice(0, 8);
+        var promises = kwSlice.map(function(kw) {
+          return Promise.all([getYTSuggestions(kw), getGoogleSuggestions(kw)]).then(function(results) {
+            trendData[kw] = { youtube: results[0].slice(0, 8), google: results[1].slice(0, 8) };
+          });
         });
+        await Promise.all(promises);
 
-        const data = await res.json();
-        if (data.error) return Response.json({ success: false, error: data.error.message }, { headers: cors });
+        // Step 3: 트렌드 포맷
+        var trendBlock = "## 실시간 트렌드 데이터 (YouTube/Google Autocomplete 실측)\n\n";
+        trendBlock += "아래 자동완성 목록에서 순서가 곧 검색량 순위입니다 (1번 = 가장 많이 검색됨).\n\n";
+        for (var kw in trendData) {
+          var d = trendData[kw];
+          trendBlock += '### 키워드: "' + kw + '"\n';
+          if (d.youtube.length > 0) {
+            trendBlock += "YouTube 자동완성:\n";
+            d.youtube.forEach(function(s, i) { trendBlock += "  " + (i+1) + ". " + s + "\n"; });
+          }
+          if (d.google.length > 0) {
+            trendBlock += "Google 자동완성:\n";
+            d.google.forEach(function(s, i) { trendBlock += "  " + (i+1) + ". " + s + "\n"; });
+          }
+          trendBlock += "\n";
+        }
 
-        const content = data.choices?.[0]?.message?.content || "";
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return Response.json({ success: false, error: "AI 응답 파싱 실패", raw: content }, { headers: cors });
+        // Step 4: 세트 생성
+        var userPrompt = "## 게스트 정보\n- 이름: " + (guest_name || "(원고에서 추출)") + "\n- 직함/소속: " + (guest_title || guestSummary || "(원고에서 추출)") + "\n\n" + trendBlock + "\n## 인터뷰 원고\n" + compressScript(script, 8000);
 
-        const result = JSON.parse(jsonMatch[0]);
-        return Response.json({ success: true, result }, { headers: cors });
+        var result = await callGPT(SET_SYSTEM, userPrompt, apiKey, 4000, 0.8);
+
+        return Response.json({
+          success: true,
+          result: result,
+          trend_data: trendData,
+          keywords_extracted: keywords,
+        }, { headers: cors });
+
       } catch (e) {
         return Response.json({ success: false, error: e.message }, { headers: cors, status: 500 });
       }
@@ -111,6 +199,6 @@ ${compressed}`;
       return Response.json({ colo: request.cf?.colo, country: request.cf?.country }, { headers: cors });
     }
 
-    return new Response("Set Generator Worker", { headers: cors });
+    return new Response("Set Generator v3", { headers: cors });
   },
 };
