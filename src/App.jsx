@@ -132,7 +132,7 @@ export default function App(){
       <div style={{background:C.sf,borderRadius:14,border:"1px solid "+C.bd,padding:24}}>
         <div style={{fontSize:15,fontWeight:700,marginBottom:16}}>게스트 정보</div>
         <div style={{display:"flex",gap:12,marginBottom:16}}>
-          <div style={{flex:1}}><label style={{fontSize:12,color:C.txD,fontWeight:600,display:"block",marginBottom:4}}>이름</label>
+          <div style={{flex:"0 0 140px"}}><label style={{fontSize:12,color:C.txD,fontWeight:600,display:"block",marginBottom:4}}>이름</label>
             <input value={gN} onChange={e=>setGN(e.target.value)} placeholder="박종천" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+C.bd,background:C.inputBg,color:C.tx,fontSize:14,fontFamily:FN,outline:"none"}}/></div>
           <div style={{flex:1}}><label style={{fontSize:12,color:C.txD,fontWeight:600,display:"block",marginBottom:4}}>직함/소속</label>
             <input value={gT} onChange={e=>setGT(e.target.value)} placeholder="30년 개발자" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+C.bd,background:C.inputBg,color:C.tx,fontSize:14,fontFamily:FN,outline:"none"}}/></div>
