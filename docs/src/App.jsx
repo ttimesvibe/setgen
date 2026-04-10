@@ -103,6 +103,7 @@ export default function App(){
   const reset=()=>{setFn("");setScript("");setGN("");setGT("");setFocusKw("");setResult(null);setTrendData(null);setTrendingNow([]);setKeywords([]);setSel({});setEdits({});setErr(null);};
 
   return <div style={{fontFamily:FN,background:C.bg,minHeight:"100vh",color:C.tx}}>
+    <style>{`::placeholder{color:#C4C8D4 !important;opacity:1 !important}`}</style>
     <div style={{background:C.sf,borderBottom:"1px solid "+C.bd,padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
       <div style={{fontSize:16,fontWeight:800,color:C.ac}}>📦 세트 생성기 v6</div>
       {fn&&<span style={{fontSize:12,color:C.txM,background:C.glass2,padding:"3px 10px",borderRadius:6}}>{fn}</span>}
