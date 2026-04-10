@@ -14,11 +14,12 @@ const C = {
   inputBg:"rgba(0,0,0,0.03)",glass:"rgba(0,0,0,0.02)",glass2:"rgba(0,0,0,0.04)",
   btnTx:"#fff",gradAc:"linear-gradient(135deg,#5B4CD4,#7C3AED)",
 };
-const TYPE_LABELS={balanced:"⚖️ 밸런스",script:"📝 스크립트 충실",trend:"🔍 트렌드 공략"};
+const TYPE_LABELS={balanced:"⚖️ 밸런스",trend:"🔍 트렌드 공략",focus:"🎯 선택과 집중",script:"📝 스크립트 충실"};
 const TYPE_COLORS={
   balanced:{bg:C.acS,bd:"rgba(91,76,212,0.2)",tx:C.ac},
-  script:{bg:C.scriptBg,bd:C.scriptBd,tx:C.scriptTx},
   trend:{bg:C.trendBg,bd:C.trendBd,tx:C.trendTx},
+  focus:{bg:"rgba(234,88,12,0.06)",bd:"rgba(234,88,12,0.15)",tx:"#EA580C"},
+  script:{bg:C.scriptBg,bd:C.scriptBd,tx:C.scriptTx},
 };
 const SRC_BADGE={
   trend:{label:"🔍",bg:C.trendBg,bd:C.trendBd,tx:C.trendTx},
@@ -45,6 +46,7 @@ export default function App(){
   const [dragOver,setDragOver]=useState(false);
   const [copied,setCopied]=useState(false);
   const [showTrend,setShowTrend]=useState(false);
+  const [focusKw,setFocusKw]=useState("");
 
   const processFile=useCallback(async(file)=>{
     if(!file)return;setFn(file.name);setErr(null);
@@ -63,18 +65,19 @@ export default function App(){
     if(!script.trim()){setErr("원고를 먼저 업로드하세요.");return;}
     setLoading(true);setErr(null);setResult(null);setTrendData(null);setTrendingNow([]);setKeywords([]);setSel({});setEdits({});
     const t0=Date.now();
+    const thirdLabel=focusKw.trim()?"선택과집중":"스크립트";
     const timer=setInterval(()=>{
       const s=Math.round((Date.now()-t0)/1000);
       if(s<5)setLoadMsg("① 키워드 추출 중...");
       else if(s<12)setLoadMsg("② 트렌드 수집 중 (YouTube·Google·Trends RSS·News)...");
       else if(s<20)setLoadMsg("③ 밸런스형 세트 생성 중...");
-      else if(s<28)setLoadMsg("④ 스크립트형 세트 생성 중...");
-      else if(s<36)setLoadMsg("⑤ 트렌드형 세트 생성 중...");
+      else if(s<28)setLoadMsg("④ 트렌드형 세트 생성 중...");
+      else if(s<36)setLoadMsg("⑤ "+thirdLabel+"형 세트 생성 중...");
       else setLoadMsg("결과 취합 중... ("+s+"초)");
     },1000);
     try{
       const res=await fetch(WORKER_URL+"/generate-set",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({script,guest_name:gN,guest_title:gT})});
+        body:JSON.stringify({script,guest_name:gN,guest_title:gT,focus_keyword:focusKw})});
       clearInterval(timer);
       const data=await res.json();
       if(!data.success)throw new Error(data.error||"생성 실패");
@@ -82,7 +85,7 @@ export default function App(){
       const s={};FIELDS.forEach(k=>{s[k]=0;});setSel(s);
     }catch(e){setErr(e.message);}
     finally{setLoading(false);setLoadMsg("");clearInterval(timer);}
-  },[script,gN,gT]);
+  },[script,gN,gT,focusKw]);
 
   const getDisplay=(key,idx)=>{
     if(!result||!result[key]||!result[key][idx])return "";
@@ -97,11 +100,11 @@ export default function App(){
     navigator.clipboard.writeText(parts.join("\n\n"));setCopied(true);setTimeout(()=>setCopied(false),2000);
   };
 
-  const reset=()=>{setFn("");setScript("");setGN("");setGT("");setResult(null);setTrendData(null);setTrendingNow([]);setKeywords([]);setSel({});setEdits({});setErr(null);};
+  const reset=()=>{setFn("");setScript("");setGN("");setGT("");setFocusKw("");setResult(null);setTrendData(null);setTrendingNow([]);setKeywords([]);setSel({});setEdits({});setErr(null);};
 
   return <div style={{fontFamily:FN,background:C.bg,minHeight:"100vh",color:C.tx}}>
     <div style={{background:C.sf,borderBottom:"1px solid "+C.bd,padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
-      <div style={{fontSize:16,fontWeight:800,color:C.ac}}>📦 세트 생성기 v4</div>
+      <div style={{fontSize:16,fontWeight:800,color:C.ac}}>📦 세트 생성기 v6</div>
       {fn&&<span style={{fontSize:12,color:C.txM,background:C.glass2,padding:"3px 10px",borderRadius:6}}>{fn}</span>}
       <div style={{marginLeft:"auto",display:"flex",gap:8}}>
         {result&&<button onClick={copyAll} style={{fontSize:12,padding:"5px 14px",borderRadius:6,border:"none",background:copied?C.ok:C.ac,color:C.btnTx,fontWeight:600,cursor:"pointer"}}>{copied?"✓ 복사 완료":"📋 전체 복사"}</button>}
@@ -112,9 +115,9 @@ export default function App(){
     {!script&&!loading&&<div style={{maxWidth:560,margin:"80px auto",padding:"0 24px"}}>
       <div style={{textAlign:"center",marginBottom:32}}>
         <div style={{fontSize:48,marginBottom:16}}>📦</div>
-        <h1 style={{fontSize:24,fontWeight:700,marginBottom:8}}>세트 생성기 v4</h1>
+        <h1 style={{fontSize:24,fontWeight:700,marginBottom:8}}>세트 생성기 v6</h1>
         <p style={{fontSize:14,color:C.txM,lineHeight:1.7}}>실시간 트렌드 + 3가지 성격의 후보를 개별 생성합니다.</p>
-        <p style={{fontSize:12,color:C.txD,marginTop:4}}>YouTube·Google 자동완성 + Trends 급상승 + News 시의성</p>
+        <p style={{fontSize:12,color:C.txD,marginTop:4}}>밸런스 · 트렌드 공략 · 선택과 집중</p>
       </div>
       <div onDragOver={e=>{e.preventDefault();setDragOver(true)}} onDragLeave={()=>setDragOver(false)}
         onDrop={e=>{e.preventDefault();setDragOver(false);processFile(e.dataTransfer.files[0])}}
@@ -138,6 +141,12 @@ export default function App(){
             <input value={gT} onChange={e=>setGT(e.target.value)} placeholder="30년 개발자" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid "+C.bd,background:C.inputBg,color:C.tx,fontSize:14,fontFamily:FN,outline:"none",boxSizing:"border-box"}}/></div>
         </div>
         <div style={{fontSize:12,color:C.txM,marginBottom:16}}>📄 {fn} · {script.length.toLocaleString()}자</div>
+        <div style={{marginBottom:16}}>
+          <label style={{fontSize:12,color:"#EA580C",fontWeight:600,display:"block",marginBottom:4}}>🎯 집중 키워드 (선택)</label>
+          <input value={focusKw} onChange={e=>setFocusKw(e.target.value)} placeholder="예: 애플 중심으로 / 애플과 구글의 전쟁 / 애플"
+            style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1px solid rgba(234,88,12,0.3)",background:"rgba(234,88,12,0.04)",color:C.tx,fontSize:14,fontFamily:FN,outline:"none",boxSizing:"border-box"}}/>
+          <div style={{fontSize:11,color:C.txD,marginTop:4}}>입력하면 3번째 후보가 이 키워드 중심으로 생성됩니다. 비워두면 스크립트 충실형으로 생성.</div>
+        </div>
         <button onClick={generate} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:C.gradAc,color:C.btnTx,fontSize:15,fontWeight:700,cursor:"pointer"}}>
           🚀 세트 생성 (키워드→트렌드 수집→3개 개별 생성)</button>
         {err&&<div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:C.fireBg,color:C.fireTx,fontSize:13}}>⚠️ {err}</div>}

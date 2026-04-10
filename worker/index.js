@@ -25,6 +25,15 @@ function makeSetPrompt(type) {
 - 설명문: 게스트의 분석과 주장을 충실하게 전달
 - "이 게스트가 아니면 들을 수 없는 이야기"가 드러나야 함`,
 
+    focus: `## 이번 후보: 🎯 선택과 집중
+편집자가 지정한 키워드를 중심으로 원고의 해당 부분에 집중합니다.
+- 썸네일/제목: 지정된 키워드 관련 내용을 앵글의 중심에 놓을 것. 다른 주제는 보조로만 활용
+- 설명문: 지정된 키워드 관련 인사이트를 앞에 배치하고, 나머지는 뒤로
+- 원고 전체를 아우르되, 지정된 키워드가 "렌즈" 역할을 함
+- 키워드가 구체적 지시("애플 중심으로")이면 그 방향을 충실히 따를 것
+- 키워드가 대비 구조("애플과 구글의 전쟁")이면 대비를 앵글의 핵심으로 살릴 것
+- 키워드가 단일 단어("애플")이면 원고에서 해당 단어와 관련된 가장 강력한 앵글을 찾을 것`,
+
     trend: `## 이번 후보: 🔍 시의성 극대화형
 지금 사람들이 관심 있는 주제와 원고 내용의 교집합을 극대화합니다.
 - 썸네일/제목: 뉴스건수가 많거나 급상승 중인 키워드를 앞에 배치. "지금 뜨는 주제"임을 즉시 느끼게
@@ -225,6 +234,7 @@ export default {
       try {
         var body = await request.json();
         var script = body.script, guest_name = body.guest_name, guest_title = body.guest_title;
+        var focus_keyword = body.focus_keyword || "";
         if (!script) return Response.json({ success: false, error: "script required" }, { headers: cors });
         var apiKey = env.OPENAI_API_KEY;
         if (!apiKey) return Response.json({ success: false, error: "OPENAI_API_KEY not configured" }, { headers: cors, status: 500 });
@@ -278,34 +288,50 @@ export default {
           notableQuotes.forEach(function(q, i) { quotesBlock += (i+1) + ". \"" + q + "\"\n"; });
         }
 
-        // ── Step 4: 3개 후보 개별 호출 ──
+        // ── Step 4: 3개 후보 개별 호출 (밸런스 → 트렌드 → 선택과집중/스크립트) ──
         var guestInfo = "## 게스트\n- 이름: " + (guest_name || "(추출)") + "\n- 직함: " + (guest_title || guestSummary || "(추출)") + "\n\n";
         var scriptBlock = "\n## 인터뷰 원고\n" + compressScript(script, 7000);
         var userBase = guestInfo + tb + quotesBlock + scriptBlock;
 
+        // 3번째 호출: focus_keyword가 있으면 focus, 없으면 script fallback
+        var thirdPrompt, thirdUser, thirdTemp, thirdType;
+        if (focus_keyword.trim()) {
+          thirdType = "focus";
+          thirdPrompt = makeSetPrompt("focus");
+          thirdUser = guestInfo + tb + quotesBlock +
+            "\n## 🎯 편집자 지정 앵글\n키워드: " + focus_keyword + "\n위 키워드와 관련된 내용을 세트의 중심 앵글로 잡으세요. 원고에서 이 키워드와 관련된 부분을 최우선으로 활용하고, 나머지는 보조적으로 배치하세요.\n" +
+            scriptBlock;
+          thirdTemp = 0.75;
+        } else {
+          thirdType = "script";
+          thirdPrompt = makeSetPrompt("script");
+          thirdUser = userBase;
+          thirdTemp = 0.7;
+        }
+
         var setResults = await Promise.all([
           callGPT(makeSetPrompt("balanced"), userBase, apiKey, 2000, 0.8),
-          callGPT(makeSetPrompt("script"), userBase, apiKey, 2000, 0.7),
           callGPT(makeSetPrompt("trend"), userBase, apiKey, 2000, 0.85),
+          callGPT(thirdPrompt, thirdUser, apiKey, 2000, thirdTemp),
         ]);
 
-        // ── 결과 병합 ──
+        // ── 결과 병합 (순서: balanced → trend → focus/script) ──
         var merged = {
           tags: [],
           thumbnail: [
             Object.assign({ type: "balanced" }, setResults[0].thumbnail),
-            Object.assign({ type: "script" }, setResults[1].thumbnail),
-            Object.assign({ type: "trend" }, setResults[2].thumbnail),
+            Object.assign({ type: "trend" }, setResults[1].thumbnail),
+            Object.assign({ type: thirdType }, setResults[2].thumbnail),
           ],
           youtube_title: [
             Object.assign({ type: "balanced" }, setResults[0].youtube_title),
-            Object.assign({ type: "script" }, setResults[1].youtube_title),
-            Object.assign({ type: "trend" }, setResults[2].youtube_title),
+            Object.assign({ type: "trend" }, setResults[1].youtube_title),
+            Object.assign({ type: thirdType }, setResults[2].youtube_title),
           ],
           description: [
             Object.assign({ type: "balanced" }, setResults[0].description),
-            Object.assign({ type: "script" }, setResults[1].description),
-            Object.assign({ type: "trend" }, setResults[2].description),
+            Object.assign({ type: "trend" }, setResults[1].description),
+            Object.assign({ type: thirdType }, setResults[2].description),
           ],
         };
 
@@ -326,6 +352,7 @@ export default {
           trending_now: trendingNow,
           keywords_extracted: keywords,
           notable_quotes: notableQuotes,
+          focus_keyword: focus_keyword,
         }, { headers: cors });
 
       } catch (e) {
@@ -337,6 +364,6 @@ export default {
       return Response.json({ colo: request.cf ? request.cf.colo : "?", country: request.cf ? request.cf.country : "?" }, { headers: cors });
     }
 
-    return new Response("Set Generator v5", { headers: cors });
+    return new Response("Set Generator v6", { headers: cors });
   },
 };
