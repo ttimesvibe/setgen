@@ -1,7 +1,28 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import * as mammoth from "mammoth";
 
 const WORKER_URL = "https://setgen.ttimes.workers.dev";
+const AUTH_URL = "https://auth.ttimes6000.workers.dev";
+
+function getAuthHeaders() {
+  const token = localStorage.getItem("ttimes_token");
+  return token ? { "Authorization": `Bearer ${token}` } : {};
+}
+function decodeJWT(token) {
+  try {
+    const payloadB64 = token.split(".")[1];
+    const payloadBytes = Uint8Array.from(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(payloadBytes));
+  } catch { return null; }
+}
+function handle401(res) {
+  if (res.status === 401) {
+    localStorage.removeItem("ttimes_token");
+    localStorage.removeItem("ttimes_user");
+    window.location.reload();
+    throw new Error("인증이 만료되었습니다. 다시 로그인해주세요.");
+  }
+}
 const FN = "'Pretendard Variable','Pretendard','Noto Sans KR',-apple-system,sans-serif";
 const C = {
   bg:"#F5F6FA",sf:"#FFFFFF",bd:"#D8DBE5",tx:"#1A1D2E",txM:"#5C6078",txD:"#8B8FA3",
@@ -29,7 +50,132 @@ const SRC_BADGE={
 const FIELDS=["thumbnail","youtube_title","description"];
 const FLABELS={thumbnail:"🖼️ 썸네일/리스트 제목",youtube_title:"▶️ 유튜브 제목",description:"📝 유튜브 설명/기사/페북"};
 
-export default function App(){
+function LoginScreen({ onLogin }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [newPwConfirm, setNewPwConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [tempToken, setTempToken] = useState(null);
+  const [tempUser, setTempUser] = useState(null);
+
+  async function handleLogin(e) {
+    e.preventDefault(); setError(""); setLoading(true);
+    try {
+      const res = await fetch(`${AUTH_URL}/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const data = await res.json();
+      if (data.success) {
+        if (data.mustChangePassword) { setTempToken(data.token); setTempUser(data.user); setMode("changePassword"); }
+        else { onLogin(data.token, data.user); }
+      } else { setError(data.error || "로그인에 실패했습니다."); }
+    } catch { setError("서버에 연결할 수 없습니다."); }
+    finally { setLoading(false); }
+  }
+
+  async function handleChangePassword(e) {
+    e.preventDefault(); setError("");
+    if (newPw.length < 8) { setError("비밀번호는 8자 이상이어야 합니다."); return; }
+    if (newPw !== newPwConfirm) { setError("새 비밀번호가 일치하지 않습니다."); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${AUTH_URL}/change-password`, { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${tempToken}` }, body: JSON.stringify({ currentPassword: password, newPassword: newPw }) });
+      const data = await res.json();
+      if (data.success) { onLogin(data.token || tempToken, tempUser); }
+      else { setError(data.error || "비밀번호 변경에 실패했습니다."); }
+    } catch { setError("서버에 연결할 수 없습니다."); }
+    finally { setLoading(false); }
+  }
+
+  const cardStyle = { background: "#FFFFFF", border: "1px solid #D8DBE5", borderRadius: 16, padding: "48px 40px", width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.08)" };
+  const inputStyle = { width: "100%", padding: "12px 16px", borderRadius: 8, border: "1px solid #D8DBE5", background: "rgba(0,0,0,0.03)", color: "#1A1D2E", fontSize: 14, fontFamily: FN, outline: "none", boxSizing: "border-box", transition: "border-color 0.2s" };
+  const btnStyle = { width: "100%", padding: "13px 0", borderRadius: 8, border: "none", background: loading ? "rgba(91,76,212,0.4)" : "linear-gradient(135deg, #5B4CD4, #7C3AED)", color: "#fff", fontSize: 15, fontWeight: 600, fontFamily: FN, cursor: loading ? "not-allowed" : "pointer", transition: "all 0.2s", marginTop: 8 };
+
+  return (
+    <div style={{ height: "100vh", background: "#F5F6FA", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FN }}>
+      <div style={cardStyle}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1A1D2E", margin: 0, letterSpacing: "-0.03em" }}>
+            <span style={{ color: "#5B4CD4" }}>TTimes</span> 세트 생성
+          </h1>
+          {mode === "changePassword" && <p style={{ fontSize: 13, color: "#5C6078", marginTop: 12 }}>첫 로그인입니다. 새 비밀번호를 설정해주세요.</p>}
+        </div>
+        {mode === "login" ? (
+          <form onSubmit={handleLogin}>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, color: "#5C6078", marginBottom: 6, display: "block" }}>아이디</label>
+              <input type="text" value={email} onChange={e => setEmail(e.target.value)} placeholder="아이디를 입력하세요" style={inputStyle} autoFocus required />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, color: "#5C6078", marginBottom: 6, display: "block" }}>비밀번호</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="비밀번호를 입력하세요" style={inputStyle} required />
+            </div>
+            {error && <div style={{ padding: "10px 14px", borderRadius: 8, marginBottom: 16, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: "#DC2626", fontSize: 13 }}>{error}</div>}
+            <button type="submit" disabled={loading} style={btnStyle}>{loading ? "로그인 중..." : "로그인"}</button>
+          </form>
+        ) : (
+          <form onSubmit={handleChangePassword}>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, color: "#5C6078", marginBottom: 6, display: "block" }}>새 비밀번호</label>
+              <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="8자 이상 입력" style={inputStyle} autoFocus required minLength={8} />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, color: "#5C6078", marginBottom: 6, display: "block" }}>새 비밀번호 확인</label>
+              <input type="password" value={newPwConfirm} onChange={e => setNewPwConfirm(e.target.value)} placeholder="비밀번호를 다시 입력" style={inputStyle} required />
+            </div>
+            {error && <div style={{ padding: "10px 14px", borderRadius: 8, marginBottom: 16, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: "#DC2626", fontSize: 13 }}>{error}</div>}
+            <button type="submit" disabled={loading} style={btnStyle}>{loading ? "변경 중..." : "비밀번호 변경"}</button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [authState, setAuthState] = useState("checking");
+  const [authUser, setAuthUser] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("ttimes_token");
+    if (!token) { setAuthState("login"); return; }
+    const payload = decodeJWT(token);
+    if (!payload || payload.exp < Date.now() / 1000) {
+      localStorage.removeItem("ttimes_token");
+      localStorage.removeItem("ttimes_user");
+      setAuthState("login");
+      return;
+    }
+    setAuthUser({ email: payload.sub, name: payload.name, role: payload.role });
+    setAuthState("authenticated");
+  }, []);
+
+  const handleAuthLogin = useCallback((token, user) => {
+    localStorage.setItem("ttimes_token", token);
+    localStorage.setItem("ttimes_user", JSON.stringify(user));
+    setAuthUser(user);
+    setAuthState("authenticated");
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem("ttimes_token");
+    localStorage.removeItem("ttimes_user");
+    setAuthUser(null);
+    setAuthState("login");
+  }, []);
+
+  if (authState === "checking") {
+    return <div style={{height:"100vh",background:"#F5F6FA",display:"flex",alignItems:"center",justifyContent:"center",color:"#5C6078",fontFamily:FN}}>로딩 중...</div>;
+  }
+  if (authState === "login") {
+    return <LoginScreen onLogin={handleAuthLogin} />;
+  }
+
+  return <AuthenticatedApp authUser={authUser} onLogout={handleLogout} />;
+}
+
+function AuthenticatedApp({ authUser, onLogout }){
   const [fn,setFn]=useState("");
   const [script,setScript]=useState("");
   const [gN,setGN]=useState("");
@@ -76,9 +222,10 @@ export default function App(){
       else setLoadMsg("결과 취합 중... ("+s+"초)");
     },1000);
     try{
-      const res=await fetch(WORKER_URL+"/generate-set",{method:"POST",headers:{"Content-Type":"application/json"},
+      const res=await fetch(WORKER_URL+"/generate-set",{method:"POST",headers:{"Content-Type":"application/json",...getAuthHeaders()},
         body:JSON.stringify({script,guest_name:gN,guest_title:gT,focus_keyword:focusKw})});
       clearInterval(timer);
+      handle401(res);
       const data=await res.json();
       if(!data.success)throw new Error(data.error||"생성 실패");
       setResult(data.result);setTrendData(data.trend_data||null);setTrendingNow(data.trending_now||[]);setKeywords(data.keywords_extracted||[]);
@@ -107,9 +254,11 @@ export default function App(){
     <div style={{background:C.sf,borderBottom:"1px solid "+C.bd,padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
       <div style={{fontSize:16,fontWeight:800,color:C.ac}}>📦 세트 생성기 v6</div>
       {fn&&<span style={{fontSize:12,color:C.txM,background:C.glass2,padding:"3px 10px",borderRadius:6}}>{fn}</span>}
-      <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+      <div style={{marginLeft:"auto",display:"flex",gap:8,alignItems:"center"}}>
+        {authUser&&<span style={{fontSize:12,color:C.txM,marginRight:4}}>{authUser.name||authUser.email}</span>}
         {result&&<button onClick={copyAll} style={{fontSize:12,padding:"5px 14px",borderRadius:6,border:"none",background:copied?C.ok:C.ac,color:C.btnTx,fontWeight:600,cursor:"pointer"}}>{copied?"✓ 복사 완료":"📋 전체 복사"}</button>}
         {(fn||result)&&<button onClick={reset} style={{fontSize:12,padding:"5px 14px",borderRadius:6,border:"1px solid "+C.bd,background:C.sf,color:C.txM,cursor:"pointer"}}>× 새 파일</button>}
+        <button onClick={onLogout} style={{fontSize:12,padding:"5px 14px",borderRadius:6,border:"1px solid "+C.bd,background:C.sf,color:C.txM,cursor:"pointer"}}>로그아웃</button>
       </div>
     </div>
 
